@@ -1,0 +1,10 @@
+*.jpg
+*.png
+*.bmp
+*.gif
+*.jpeg
+tmp.*
+*test*
+data/
+.git/
+.gitingore
