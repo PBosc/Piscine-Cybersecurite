@@ -4,30 +4,28 @@ import bs4
 import argparse
 from urllib.parse import urljoin
 from time import sleep
+import signal
+import shutil
 
 found = 0
 downloaded = 0
 visited = set()
 
+def exit_gracefully(signum, frame, folder):
+    print("\n\033[0;31mExiting...\033[0m")
+    exit(0)
+
 def custom_print(msg, depth, url):
-    # Save cursor position
     global found
     global downloaded
     found += 1
     print("\033[K", end="")
     print("\033[s", end="")
-    # Move cursor to the bottom of the screen
     print("\033[1A", end="")
-    # Move cursor to the end of the line
     print("\033[1000C", end="")
-    # Add a new line
     print("\n", end="")
-    # Print the message
     print(msg + "\n" + f"\033[0;35mScanning URL {url}...\033[{50 - len(url)}C Current Depth : {depth}, Files : {downloaded}/{found}", end="\033[0m")
     print("\033[u", end="")
-    # Move to end of line
-
-# Define the function to download images from a given URL
 
 def download_images(url, save_path, max_depth, current_depth=0):
     global downloaded
@@ -40,12 +38,11 @@ def download_images(url, save_path, max_depth, current_depth=0):
     visited.add(url)
     try:
         response = requests.get(url)
-        response.raise_for_status()  # Ensure we notice bad responses
+        response.raise_for_status()
     except requests.exceptions.RequestException as e:
         custom_print(f"\x1b[1;31mError fetching {url}: {e} \x1b[0m", current_depth, url)
         return
 
-    # Handle encoding issues
     response.encoding = response.apparent_encoding
     soup = bs4.BeautifulSoup(response.text, 'html.parser')
     
@@ -62,7 +59,7 @@ def download_images(url, save_path, max_depth, current_depth=0):
             continue
         try:
             img_response = requests.get(img_url)
-            img_response.raise_for_status()  # Ensure we notice bad responses
+            img_response.raise_for_status()
         except requests.exceptions.RequestException as e:
             custom_print(f"\x1b[1;31mError fetching {img_url}: {e}\x1b[0m", current_depth, url)
             continue
@@ -80,14 +77,12 @@ def download_images(url, save_path, max_depth, current_depth=0):
         custom_print(f"\x1b[1;32mDownloaded {file_name} to {file_path}\x1b[0m", current_depth, url)
         downloaded += 1
 
-    # If recursive flag is set, find all links and download images from them
     if recursive:
         link_tags = soup.find_all('a', href=True)
         for link in link_tags:
             next_url = urljoin(url, link['href'])
             download_images(next_url, save_path, max_depth, current_depth + 1)
 
-# Parse command-line arguments
 parser = argparse.ArgumentParser(description='Download images from a URL.')
 parser.add_argument('URL', help='The URL to download images from')
 parser.add_argument('-r', action='store_true', help='Recursively download images')
@@ -96,12 +91,11 @@ parser.add_argument('-p', default='./data/', help='Path where the downloaded fil
 
 args = parser.parse_args()
 
-# Assign arguments to variables
 url = args.URL
 recursive = args.r
 max_depth = args.l
 save_path = args.p
 
-# Start downloading images
+signal.signal(signal.SIGINT, lambda signum, frame: exit_gracefully(signum, frame, save_path))
 download_images(url, save_path, max_depth)
 print(f"\033[1000C", end="")
