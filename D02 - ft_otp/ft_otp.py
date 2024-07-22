@@ -6,6 +6,8 @@ import argparse
 import rsa
 import os
 import struct
+import qrcode
+import qrcode.image.svg
 
 def left_rotate(n, b):
     return ((n << b) | (n >> (32 - b))) & 0xFFFFFFFF
@@ -94,30 +96,56 @@ def totp(key, time_step=30, digits=6, t0=0):
     key_bytes = base64.b16decode(key, casefold=True)
     return hotp(key_bytes, time_counter, digits)
 
+def generate_qr_code():
+    secret_key = os.urandom(32)
+    secret_key_b16 = secret_key.hex()
+    secret_key = base64.b32encode(secret_key).decode()
+    print(f"Secret key b32: {secret_key}")
+    img = qrcode.make("otpauth://totp/ft_otp?secret=" + secret_key, image_factory=qrcode.image.svg.SvgImage)
+    try:
+        os.makedirs('qr_codes', exist_ok=True)
+    except Exception as e:
+        print(f"Error creating directory: {e}")
+        exit()
+    img.save('qr_codes/qr.svg')
+    print(f"Secret key: {secret_key_b16}")
+    return secret_key_b16
+
+
 parser = argparse.ArgumentParser(description='Creates a one time password using the TOTP algorithm.')
 
-parser.add_argument('-g', '--generate', type=str, help='Encrypts secret key and stores it in a file.')
+parser.add_argument('-g', '--generate', nargs='?', type=str, const="QR", help='Encrypts secret key and stores it in a file.')
 parser.add_argument('-k', '--key', nargs='?',type=str, const="ft_otp.key", help='Reads secret key from a file and generates OTP')
+parser.add_argument('-c', '--clear', action='store_true', help='Clears the rsa_keys directory and ft_otp.key')
 
 args = parser.parse_args()
 
 generate = args.generate
 key = args.key
+clear = args.clear
 
-if not generate and not key:
+if not generate and not key and not clear:
     print("Please provide a secret key or generate one.")
     exit()
 
 if generate:
-    try:
-        with open(generate, 'r') as f:
-            secret_key = f.read()
-    except FileNotFoundError:
-        print(f"File {generate} not found.")
-        exit()
-    except Exception as e:
-        print(f"Error reading file: {e}")
-        exit()
+    if generate == "QR" or generate == "qr":
+        try :
+            with open('qr_codes/qr.svg', 'r') as f:
+                print("QR code already generated.")
+                exit()
+        except FileNotFoundError:
+            secret_key = generate_qr_code()
+    else:
+        try:
+            with open(generate, 'r') as f:
+                secret_key = f.read()
+        except FileNotFoundError:
+            print(f"File {generate} not found.")
+            exit()
+        except Exception as e:
+            print(f"Error reading file: {e}")
+            exit()
     if len(secret_key) < 64:
         print("Secret key must be 64 characters long.")
         exit()
@@ -159,6 +187,18 @@ if key:
         exit()
     private_key = rsa.PrivateKey.load_pkcs1(private_key.encode())
     secret_key = rsa.decrypt(secret_key, private_key).decode()
-    print("Secret key: ", secret_key)
     otp = totp(secret_key)
     print(f'TOTP Value: {otp}')
+
+if clear:
+    try:
+        os.remove('ft_otp.key')
+        os.remove('rsa_keys/ft_otp.pub')
+        os.remove('rsa_keys/ft_otp.priv')
+        os.rmdir('rsa_keys')
+        os.remove('qr_codes/qr.svg')
+        os.rmdir('qr_codes')
+    except Exception as e:
+        print(f"Error clearing keys: {e}")
+        exit()
+    print("Keys cleared.")
